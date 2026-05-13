@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14-alpine
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: "hapi"
+      POSTGRES_USER: "admin"
+      POSTGRES_PASSWORD: "admin123"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d hapi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fhir-network
+
+  hapi-fhir:
+    # image: hapi-fhir-jpaserver-starter_hapi-fhir
+    build: ./hapi-fhir-jpaserver-starter            # se construye desde el proyecto
+    container_name: hapi-fhir
+    restart: on-failure
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/hapi"
+      SPRING_DATASOURCE_USERNAME: "admin"
+      SPRING_DATASOURCE_PASSWORD: "admin123"
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: "org.postgresql.Driver"
+      #HIBERNATE_DIALECT: "ca.uhn.fhir.jpa.model.dialect.HapiFhirPo"
+      HIBERNATE_DIALECT: "ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect"
+    healthcheck:
+      #test: ["CMD", "curl", "-f", "http://localhost:8080/fhir/metadata"]
+      test: ["CMD", "java", "-cp", "/app", "HealthCheck"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fhir-network
+
+  middleware:
+    build: ./middleware
+    container_name: middleware
+    restart: on-failure
+    ports:
+      - "${API_PORT:-8000}:${API_PORT:-8000}"
+    environment:
+      - FHIR_SERVER_URL=http://hapi-fhir:8080/fhir
+      - API_PORT=${API_PORT:-8000}
+    depends_on:
+      hapi-fhir:
+        condition: service_healthy
+    networks:
+      - fhir-network
+    volumes:
+      - ./middleware:/app  # Hot reload en desarrollo
+
+volumes:
+  postgres_data:
+networks:
+  fhir-network:
+    driver: bridge

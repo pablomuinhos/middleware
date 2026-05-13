@@ -1,0 +1,13 @@
+# services/patient_transformer.py
+from typing import Dict, Any
+from models.patient import PatientInput
+
+def transform_json_to_fhir(patient: PatientInput) -> Dict[str, Any]:
+    """Transforma JSON simulado (nombre, apellido) a FHIR Patient"""
+    # borrar ?
+    return {
+        "resourceType": "Patient",
+        "name": [{"family": patient.apellido, "given": [patient.nombre]}],
+        "birthDate": patient.fecha_nacimiento,
+        "gender": patient.genero
+    }
