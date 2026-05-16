@@ -41,7 +41,6 @@ async def get_patient(patient_id: str):
         raise HTTPException(status_code=status_code, detail=result)
 
 
-
 @router.get("/")
 async def search_patients(
     family: Optional[str] = Query(None, description="Apellido del paciente"),
@@ -52,7 +51,6 @@ async def search_patients(
     """
     Busca pacientes en el servidor FHIR según criterios opcionales.
     """
-    # Construir parámetros de búsqueda FHIR
     params = {}
     if family:
         params["family"] = family
@@ -63,7 +61,7 @@ async def search_patients(
     if birthdate:
         params["birthdate"] = birthdate
     
-    # Si no hay parámetros, devolver error
+    # si no hay, devolver error
     if not params:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -73,7 +71,6 @@ async def search_patients(
     status_code_fhir, result = await call_fhir_server("GET", "/Patient", params=params)
     
     if status_code_fhir == 200:
-        # Añadir metadatos útiles a la respuesta
         result["_middleware_info"] = {
             "search_criteria": params,
             "total_results": len(result.get("entry", []))

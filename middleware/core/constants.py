@@ -1,4 +1,4 @@
-# TIPOS DE IDENTIFICADORES HL7 v2 → FHIR system
+# TIPOS DE IDENTIFICADORES HL7 v2 -> FHIR system
 HL7_IDENTIFIER_TYPE_MAP = {
     "CIP": "urn:oid:2.16.724.1.2.2.1.1.1",       # CIP España
     "MR": "urn:oid:hospital/medical-record",     # historia clínica local

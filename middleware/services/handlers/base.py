@@ -19,7 +19,6 @@ class HL7MessageHandler(ABC):
         """Procesa el mensaje y devuelve el resultado de la operación FHIR"""
         pass
     
-    
     async def execute_fhir_operation(
         self, 
         method: str, 
@@ -40,7 +39,8 @@ class HL7MessageHandler(ABC):
     
     def log_info(self, message: str):
         logger.info(f"[{self.__class__.__name__}] {message}")
-    
+    def log_warning(self, message: str):
+        logger.warning(f"[{self.__class__.__name__}] {message}")
     def log_error(self, message: str):
         logger.error(f"[{self.__class__.__name__}] {message}")
 
