@@ -7,20 +7,19 @@ class ADT_A08_Handler(HL7MessageHandler):
     """
     Handler para mensajes ADT^A08 - Actualización de información.
     Actualiza un paciente existente en el servidor FHIR.
+    Se obvia visita
     """
-    
+    MESSAGE_TYPE = "ADT^A08"
     def can_handle(self, message_type: str) -> bool:
-        return message_type == "ADT^A08"
+        return message_type == self.MESSAGE_TYPE
     
     async def process(self, segments: Dict[str, Any]) -> Dict[str, Any]:
-        self.log_info("Procesando ADT^A08: actualizar paciente")
+        self.log_info(f"Procesando {self.MESSAGE_TYPE}: actualizar paciente")
         
         # paciente
-        pid = segments.get('PID')
-        if not pid:
-            raise ValueError("ADT^A08: No se encontró segmento PID")
-        
-        pd1 = segments.get('PD1')
+        pid = self.get_required_segment(segments, "PID", self.MESSAGE_TYPE)
+        pd1 = self.get_optional_segment(segments, "PD1", self.MESSAGE_TYPE)
+
         patient_data = extract_patient_data(pid,pd1)
 
         # buscar paciente para obtener id

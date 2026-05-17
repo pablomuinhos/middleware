@@ -1,6 +1,6 @@
 import hl7
 import logging
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List
 from core.constants import DEFAULT_IDENTIFIER, HL7_IDENTIFIER_TYPE_MAP, PRIMARY_IDENTIFIER_TYPES, DEFAULT_IDENTIFIER_PATTERN
 import re
 
@@ -9,26 +9,63 @@ logger = logging.getLogger(__name__)
 def normalize_hl7_message(raw_message: str) -> str:
     return raw_message.replace('\r\n', '\r').replace('\n', '\r')
 
-def parse_hl7_segments(raw_message: str) -> Dict[str, Any]:
+def parse_hl7_segments(raw_message: str) -> Tuple[Dict[str, Any],Dict[str, Any]]:
     """Parsea un mensaje HL7 y devuelve un diccionario de segmentos"""
     normalized = normalize_hl7_message(raw_message)
     parsed = hl7.parse(normalized)
     
     segments = {}
-    for segment in parsed:
+    indexes = {}
+    for idx,segment in enumerate(parsed):
         segment_type = segment[0][0]
-        segments[segment_type] = segment
-    
-    return segments
+
+        if segment_type not in segments:
+            segments[segment_type] = []
+            indexes[segment_type] = []
+
+        segments[segment_type].append(segment)
+        indexes[segment_type].append(idx)
+
+    return segments, indexes
+
+
 
 def get_message_type(segments: Dict[str, Any]) -> str:
     """Extrae el tipo de mensaje del segmento MSH"""
-    msh = segments.get('MSH')
-    if not msh:
+    msh_list = segments.get('MSH', [])
+    if not msh_list:
         raise ValueError("No se encontró segmento MSH")
-    
-    return str(msh[9]) if len(msh) > 9 else ""
+    msh = msh_list[0]
+    if len(msh) <= 9:
+        raise ValueError("No se ha podido obtener el tipo de mensaje")
+    return str(msh[9])
 
+def flatten_hl7_field(field):
+    """
+    Simplifica los anidamientos excesivos de la librería hl7
+    """
+    result = []
+    
+    if isinstance(field, (list, tuple)):
+        for item in field:
+            if isinstance(item, (list, tuple)):
+                for subitem in item:
+                    if isinstance(subitem, (list, tuple)) and len(subitem) > 0:
+                        result.append(str(subitem[0]) if subitem[0] else "")
+                    else:
+                        result.append(str(subitem) if subitem else "")
+            else:
+                result.append(str(item) if item else "")
+    else:
+        result.append(str(field) if field else "")
+    
+    return result
+
+###################
+## RESOURCES
+###################
+
+## PATIENT
 def extract_patient_data(pid_segment, pd1_segment=None) -> Dict[str, Any]:
     """Extrae datos del paciente"""
 
@@ -59,18 +96,9 @@ def extract_patient_data(pid_segment, pd1_segment=None) -> Dict[str, Any]:
             { "system": HL7_IDENTIFIER_TYPE_MAP.get(DEFAULT_IDENTIFIER),"value": default_identifier}
         )
     else:
-        raise ValueError("No se encontró identificador principal")
+        raise ValueError("No se encontró identificador principal de paciente o no cumple el formato requerido")
 
     # PID-5: Patient Name
-    """
-    apellido = ""
-    nombre = ""
-    if len(pid_segment) > 5 and pid_segment[5]:
-        name_field = pid_segment[5]
-        if isinstance(name_field, (list)):
-            apellido = str(name_field[0][0][0])
-            nombre = str(name_field[0][1][0])
-    """
     apellido = ""
     nombre = ""
     if len(pid_segment) > 5 and pid_segment[5]:
@@ -161,7 +189,6 @@ def extract_patient_data(pid_segment, pd1_segment=None) -> Dict[str, Any]:
         }
         marital_status = marital_map.get(marital_raw, "U")
 
-
     ### PD1
 
     disability = None
@@ -202,6 +229,8 @@ def extract_patient_data(pid_segment, pd1_segment=None) -> Dict[str, Any]:
         "living_arrangement": living_arrangement,
         "living_dependency": living_dependency,  
     }
+
+## ENCOUTER
 
 def extract_encounter_data(pv1_segment) -> Dict[str, Any]:
     """
@@ -252,25 +281,65 @@ def extract_encounter_data(pv1_segment) -> Dict[str, Any]:
         "raw_pv1": pv1_segment
     }
 
-def flatten_hl7_field(field):
+
+## OBSERVATION
+
+def extract_observation_data(obr_segment, obx_segments: list) -> List[Dict[str, Any]]:
     """
-    Simplifica los anidamientos excesivos de la librería hl7
+    Extrae datos de observación de los segmentos OBR y OBX.
+    Retorna una lista de observaciones (una por cada OBX).
     """
-    result = []
+    observations = []
     
-    if isinstance(field, (list, tuple)):
-        for item in field:
-            if isinstance(item, (list, tuple)):
-                for subitem in item:
-                    if isinstance(subitem, (list, tuple)) and len(subitem) > 0:
-                        result.append(str(subitem[0]) if subitem[0] else "")
-                    else:
-                        result.append(str(subitem) if subitem else "")
-            else:
-                result.append(str(item) if item else "")
-    else:
-        result.append(str(field) if field else "")
+    # OBR-4: código
+    study_code = ""
+    if len(obr_segment) > 4 and obr_segment[4]:
+        study_code = str(obr_segment[4])
     
-    return result
+    # OBR-7: fecha
+    effective_date = ""
+    if len(obr_segment) > 7 and obr_segment[7]:
+        effective_date = str(obr_segment[7])
+    
+    for obx in obx_segments:
+        # OBX-3: código 
+        code = ""
+        if len(obx) > 3 and obx[3]:
+            code_parts = flatten_hl7_field(obx[3])
+            code = code_parts[0] if code_parts else ""
+        
+        # OBX-5: valor
+        value = ""
+        if len(obx) > 5 and obx[5]:
+            value = str(obx[5])
+        
+        # OBX-6: unidades
+        unit = ""
+        if len(obx) > 6 and obx[6]:
+            unit_parts = flatten_hl7_field(obx[6])
+            unit = unit_parts[0] if unit_parts else ""
+        
+        # OBX-7: rango
+        reference_range = ""
+        if len(obx) > 7 and obx[7]:
+            reference_range = str(obx[7])
+        
+        # OBX-8: f(N=Normal, L=Low, H=High)
+        abnormal_flag = ""
+        if len(obx) > 8 and obx[8]:
+            abnormal_flag = str(obx[8])
+        
+        observations.append({
+            "study_code": study_code,
+            "code": code,
+            "value": value,
+            "unit": unit,
+            "reference_range": reference_range,
+            "abnormal_flag": abnormal_flag,
+            "effective_date": effective_date
+        })
+    
+    return observations
+
 
 

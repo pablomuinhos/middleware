@@ -15,7 +15,7 @@ class HL7MessageHandler(ABC):
         pass
     
     @abstractmethod
-    async def process(self, segments: Dict[str, Any]) -> Dict[str, Any]:
+    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Dict[str, Any]:
         """Procesa el mensaje y devuelve el resultado de la operación FHIR"""
         pass
     
@@ -29,13 +29,6 @@ class HL7MessageHandler(ABC):
     ) -> Tuple[int, Optional[Dict]]:
         """Ejecuta la operación en el servidor FHIR"""
         return await call_fhir_server(method, path, data=resource, params=params, headers=headers)
-        """
-        status_code, result = await call_fhir_server(method, path, data=resource, params=params, headers=headers)
-        if result is None:
-            result = {}
-            
-        return status_code, result
-        """
     
     def log_info(self, message: str):
         logger.info(f"[{self.__class__.__name__}] {message}")
@@ -88,6 +81,7 @@ class HL7MessageHandler(ABC):
         
         self.log_info(f"Paciente encontrado: ID={patient_id}, versión={version_id}")
         return patient_resource, 200, None
+
 
     async def get_or_create_patient(self, system: str, value: str, patient_data: Dict) -> Optional[str]:
         """Busca paciente por identifier. Si no existe, lo crea."""
@@ -164,6 +158,7 @@ class HL7MessageHandler(ABC):
             
             self.log_info(f"Encounter creado: {result.get('id') if result else 'unknown'}")
             return {"action": "created", "id": result.get("id") if result else None, "status_code": status_code}
+
 
     async def find_active_encounter(self, patient_fhir_id: str) -> Optional[Dict]:
         """Busca un Encounter activo para un paciente."""
@@ -269,3 +264,14 @@ class HL7MessageHandler(ABC):
             return False, None, None, "No se pudo obtener el ID del Patient"
 
         return True, patient_id, encounter_id, None
+
+    def get_required_segment(self, segments: Dict, segment_type: str, handler_name: str) -> Any:
+        """Obtiene un único segmento obligatorio (exactamente uno)"""
+        seg_list = segments.get(segment_type, [])
+        if len(seg_list) != 1:
+            raise ValueError(f"{handler_name}: Debe informarse exactamente un segmento {segment_type}")
+        return seg_list[0]
+
+    def get_optional_segment(self, segments: Dict, segment_type: str, handler_name: str) -> Optional[Any]:
+        """Obtiene un segmento opcional (cero o uno)"""
+        return segments.get(segment_type)[0] if segment_type in segments  else None

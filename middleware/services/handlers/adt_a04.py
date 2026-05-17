@@ -4,26 +4,24 @@ from services.handlers.base import HL7MessageHandler
 from services.hl7_parser import extract_encounter_data, extract_patient_data
 from services.patient_builder import build_patient_resource
 
+
 class ADT_A04_Handler(HL7MessageHandler):
     """
     Handler para mensajes ADT^A04 - Registro de paciente.
     Crea un nuevo paciente en el servidor FHIR.
     """
-    
+    MESSAGE_TYPE = "ADT^A04"
     def can_handle(self, message_type: str) -> bool:
-        return message_type == "ADT^A04"
+        return message_type == self.MESSAGE_TYPE
     
     async def process(self, segments: Dict[str, Any]) -> Dict[str, Any]:
-        self.log_info("Procesando ADT^A04: crear paciente")
+        self.log_info(f"Procesando {self.MESSAGE_TYPE}: crear paciente")
         
         # paciente
-        pid = segments.get('PID')
-        if not pid:
-            raise ValueError("ADT^A04: No se encontró segmento PID")
-        
-        pd1 = segments.get('PD1')
-        patient_data = extract_patient_data(pid,pd1)
+        pid = self.get_required_segment(segments, "PID", self.MESSAGE_TYPE)
+        pd1 = self.get_optional_segment(segments, "PD1", self.MESSAGE_TYPE)
 
+        patient_data = extract_patient_data(pid,pd1)
         fhir_resource = build_patient_resource(patient_data)
 
         if_none_exist = f"identifier={patient_data['identifier'][0]['system']}|{patient_data['identifier'][0]['value']}"
@@ -50,8 +48,7 @@ class ADT_A04_Handler(HL7MessageHandler):
 
         # encounter
         encounter_result = None
-        pv1 = segments.get("PV1")
-        self.log_info("PV1 detectado. Intentando crear Encounter...")
+        pv1 = self.get_required_segment(segments, "PV1", self.MESSAGE_TYPE)
             
         try:
             encounter_data = extract_encounter_data(pv1)
