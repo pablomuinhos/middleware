@@ -20,7 +20,6 @@ class ORU_R01_Handler(HL7MessageHandler):
         if not patients_structure:
             return {"success": False, "error": "No se encontraron datos de pacientes"}
         
-
         # procesar pacientes -> Órdenes -> Resultados
         results = []
         errors = []
@@ -142,12 +141,17 @@ class ORU_R01_Handler(HL7MessageHandler):
                 continue
             
             observation_data_list = extract_observation_data(obr, obx_list)
-            
+
             for obs_data in observation_data_list:
+                service_request_id = None
+                if obs_data["placer_order_number"]:
+                    service_request_id = await self._find_service_request(obs_data["placer_order_number"])
+                
                 fhir_obs = build_observation_resource(
                     obs_data,
                     patient_fhir_id,
-                    encounter_id
+                    encounter_id,
+                    service_request_id
                 )
                 
                 status_code, result = await self.execute_fhir_operation(
@@ -215,3 +219,16 @@ class ORU_R01_Handler(HL7MessageHandler):
         
         self.log_info(f"No se encontró ni creó Encounter para paciente {patient_fhir_id}")
         return None
+    
+    async def _find_service_request(self, placer_order_number: str) -> Optional[str]:
+        """Busca un ServiceRequest por su número de orden (identificador de negocio)"""
+        params = {"identifier": f"http://hospital/order-id|{placer_order_number}"}
+        status_code, result = await self.execute_fhir_operation("GET", "/ServiceRequest", params=params)
+        
+        if status_code == 200 and result.get("total", 0) >= 1:
+            sr_id = result["entry"][0]["resource"]["id"]
+            self.log_info(f"ServiceRequest encontrado: {sr_id} para orden {placer_order_number}")
+            return sr_id
+        else:
+            self.log_warning(f"No se encontró ServiceRequest para orden {placer_order_number}")
+            return None

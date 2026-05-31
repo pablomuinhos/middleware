@@ -42,6 +42,8 @@ async def call_fhir_server(
                     response = await client.put(url, json=data, headers=default_headers)
                 case "DELETE":
                     response = await client.delete(url, headers=default_headers)
+                case "PATCH": 
+                    response = await client.patch(url, json=data, headers=default_headers)
                 case _:
                     raise ValueError(f"Método HTTP no soportado: {method}")
             

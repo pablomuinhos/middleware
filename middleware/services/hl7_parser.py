@@ -1,8 +1,11 @@
+from datetime import datetime, timezone, timedelta
 import hl7
 import logging
 from typing import Dict, Any, Tuple, List
 from core.constants import DEFAULT_IDENTIFIER, HL7_IDENTIFIER_TYPE_MAP, PRIMARY_IDENTIFIER_TYPES, DEFAULT_IDENTIFIER_PATTERN
 import re
+import hashlib
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +33,51 @@ def parse_hl7_segments(raw_message: str) -> Tuple[Dict[str, Any],Dict[str, Any]]
 
 
 
-def get_message_type(segments: Dict[str, Any]) -> str:
+def check_token_and_date_and_get_message_type(segments: Dict[str, Any]) -> str:
     """Extrae el tipo de mensaje del segmento MSH"""
     msh_list = segments.get('MSH', [])
     if not msh_list:
         raise ValueError("No se encontró segmento MSH")
     msh = msh_list[0]
+
     if len(msh) <= 9:
         raise ValueError("No se ha podido obtener el tipo de mensaje")
+    
+    # COMPROBAR TOKEN
+    secret = settings.get_secret_key(str(msh[3]), str(msh[4])).encode('utf-8')
+    if not secret:
+        raise ValueError(f"No hay clave secreta configurada para {str(msh[3])}/{str(msh[4])}")
+    
+    # se hace hash de la fecha y el secreto
+    msh_datetime = str(msh[7])
+    key = hashlib.sha256(f"{msh_datetime}".encode('utf-8') + secret).hexdigest()
+    if key != str(msh[8]):
+        raise ValueError("No se ha podido autenticar el mensaje")
+    
+    ## COMPROBAR TIEMPO
+    if not msh_datetime:
+        raise ValueError("No se encontró fecha/hora en el mensaje (MSH-7)")
+    
+    try:
+        msg_time = datetime.strptime(msh_datetime, "%Y%m%d%H%M%S")
+    except ValueError:
+        try:
+            msg_time = datetime.strptime(msh_datetime, "%Y%m%d")
+        except ValueError:
+            raise ValueError(f"Formato de fecha no reconocido: {msh_datetime}")
+    msg_time = msg_time.replace(tzinfo=timezone.utc)    
+    now = datetime.now(timezone.utc)
+    time_diff = abs((now - msg_time).total_seconds())
+    
+    MAX_TIME_DIFF_SECONDS = settings.MAX_TIME_DIFF_SECONDS
+    
+    #if time_diff > MAX_TIME_DIFF_SECONDS:
+    #    raise ValueError(f"El mensaje tiene una antigüedad de {time_diff/60:.1f} minutos, excede el límite de 30 minutos")
+    
+
+    
     return str(msh[9])
+
 
 def flatten_hl7_field(field):
     """
@@ -291,10 +330,14 @@ def extract_observation_data(obr_segment, obx_segments: list) -> List[Dict[str, 
     """
     observations = []
     
+    # OBR-4: orden
+    placer_order_number = str(obr_segment[2]) if len(obr_segment) > 2 else ""
+
     # OBR-4: código
     study_code = ""
     if len(obr_segment) > 4 and obr_segment[4]:
-        study_code = str(obr_segment[4])
+        obr4 = flatten_hl7_field(obr_segment[4])
+        study_code = obr4[0] if len(obr4) > 0 else ""
     
     # OBR-7: fecha
     effective_date = ""
@@ -330,6 +373,7 @@ def extract_observation_data(obr_segment, obx_segments: list) -> List[Dict[str, 
             abnormal_flag = str(obx[8])
         
         observations.append({
+            "placer_order_number": placer_order_number,
             "study_code": study_code,
             "code": code,
             "value": value,
@@ -342,4 +386,39 @@ def extract_observation_data(obr_segment, obx_segments: list) -> List[Dict[str, 
     return observations
 
 
+## SERVICE REQUEST
 
+def extract_service_request_data(orc_segment, obr_segment) -> Dict[str, Any]:
+    """Extrae datos de ORC y OBR para construir un ServiceRequest"""
+
+    # Datos desde ORC (Order Common)
+    order_status = "active"
+    order_date = ""
+
+    order_status = str(orc_segment[1]) if len(orc_segment) > 1 else "NW"  
+    order_date = str(orc_segment[9]) if len(orc_segment) > 9 else ""      
+
+    # Datos desde OBR (Observation Request)
+    study_code = ""
+    study_description = ""
+    study_date = ""
+    order_id = ""
+
+    order_id = str(obr_segment[2]) if len(obr_segment) > 2 else ""        
+
+    if len(obr_segment) > 4:
+        obr4 = flatten_hl7_field(obr_segment[4])
+        study_code = obr4[0] if len(obr4) > 0 else ""
+        study_description = obr4[1] if len(obr4) > 1 else ""
+
+    if len(obr_segment) > 7:
+        study_date = str(obr_segment[7])  # OBR-7: Observation Date/Time
+
+    return {
+        "order_id": order_id,
+        "order_status": order_status,
+        "order_date": order_date,
+        "study_code": study_code,
+        "study_description": study_description,
+        "study_date": study_date
+    }

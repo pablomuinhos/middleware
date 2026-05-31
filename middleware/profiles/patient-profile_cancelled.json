@@ -1,0 +1,205 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "middleware-patient-profile",
+  "url": "http://middleware.fhir/profile/patient",
+  "name": "MiddlewarePatientProfile",
+  "title": "Perfil de Paciente para Middleware FHIR",
+  "status": "active",
+  "description": "Perfil que define los campos utilizados por el middleware en el recurso Patient",
+  "fhirVersion": "5.0.0",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+  "derivation": "constraint",
+  "differential": {
+    "element": [
+      {
+        "id": "Patient.identifier",
+        "path": "Patient.identifier",
+        "min": 1,
+        "max": "*",
+        "mustSupport": true
+      },
+      {
+        "id": "Patient.identifier.system",
+        "path": "Patient.identifier.system",
+        "min": 1,
+        "mustSupport": true
+      },
+      {
+        "id": "Patient.identifier.value",
+        "path": "Patient.identifier.value",
+        "min": 1,
+        "mustSupport": true
+      },
+      {
+        "id": "Patient.name",
+        "path": "Patient.name",
+        "min": 1,
+        "max": "*",
+        "mustSupport": true
+      },
+      {
+        "id": "Patient.name.family",
+        "path": "Patient.name.family",
+        "min": 1,
+        "max": "1",
+        "mustSupport": true
+      },
+      {
+        "id": "Patient.name.given",
+        "path": "Patient.name.given",
+        "min": 1,
+        "max": "*",
+        "mustSupport": true
+      },
+      {
+        "id": "Patient.extension:mothersMaidenName",
+        "path": "Patient.extension",
+        "sliceName": "mothersMaidenName",
+        "short": "Apellido de soltera de la madre (segundo apellido)",
+        "type": [
+          {
+            "code": "Extension",
+            "profile": ["http://hl7.org/fhir/StructureDefinition/patient-motherMaidenName"]
+          }
+        ],
+        "mustSupport": true
+      },
+      {
+        "id": "Patient.gender",
+        "path": "Patient.gender",
+        "min": 0,
+        "max": "1"
+      },
+      {
+        "id": "Patient.birthDate",
+        "path": "Patient.birthDate",
+        "min": 1,
+        "max": "1"
+      },
+      {
+        "id": "Patient.address",
+        "path": "Patient.address",
+        "min": 0,
+        "max": "*"
+      },
+      {
+        "id": "Patient.address.line",
+        "path": "Patient.address.line",
+        "min": 0,
+        "max": "*"
+      },
+      {
+        "id": "Patient.address.city",
+        "path": "Patient.address.city",
+        "min": 0,
+        "max": "1"
+      },
+      {
+        "id": "Patient.address.state",
+        "path": "Patient.address.state",
+        "min": 0,
+        "max": "1"
+      },
+      {
+        "id": "Patient.address.postalCode",
+        "path": "Patient.address.postalCode",
+        "min": 0,
+        "max": "1"
+      },
+      {
+        "id": "Patient.address.country",
+        "path": "Patient.address.country",
+        "min": 0,
+        "max": "1"
+      },
+      {
+        "id": "Patient.telecom",
+        "path": "Patient.telecom",
+        "min": 0,
+        "max": "*"
+      },
+      {
+        "id": "Patient.telecom.system",
+        "path": "Patient.telecom.system",
+        "min": 1
+      },
+      {
+        "id": "Patient.telecom.value",
+        "path": "Patient.telecom.value",
+        "min": 1
+      },
+      {
+        "id": "Patient.telecom.use",
+        "path": "Patient.telecom.use",
+        "min": 0,
+        "max": "1"
+      },
+      {
+        "id": "Patient.communication",
+        "path": "Patient.communication",
+        "min": 0,
+        "max": "*"
+      },
+      {
+        "id": "Patient.communication.language",
+        "path": "Patient.communication.language",
+        "min": 1
+      },
+      {
+        "id": "Patient.maritalStatus",
+        "path": "Patient.maritalStatus",
+        "min": 0,
+        "max": "1"
+      },
+      {
+        "id": "Patient.maritalStatus.coding",
+        "path": "Patient.maritalStatus.coding",
+        "min": 1
+      },
+      {
+        "id": "Patient.maritalStatus.coding.system",
+        "path": "Patient.maritalStatus.coding.system",
+        "fixedUri": "http://terminology.hl7.org/CodeSystem/v3-MaritalStatus"
+      },
+      {
+        "id": "Patient.extension:disability",
+        "path": "Patient.extension",
+        "sliceName": "disability",
+        "short": "Discapacidad del paciente",
+        "type": [
+          {
+            "code": "Extension",
+            "profile": ["http://hl7.org/fhir/StructureDefinition/patient-disability"]
+          }
+        ]
+      },
+      {
+        "id": "Patient.extension:livingArrangement",
+        "path": "Patient.extension",
+        "sliceName": "livingArrangement",
+        "short": "Situación de vivienda",
+        "type": [
+          {
+            "code": "Extension",
+            "profile": ["http://hl7.org/fhir/StructureDefinition/patient-livingArrangement"]
+          }
+        ]
+      },
+      {
+        "id": "Patient.extension:livingDependency",
+        "path": "Patient.extension",
+        "sliceName": "livingDependency",
+        "short": "Dependencia de vivienda",
+        "type": [
+          {
+            "code": "Extension",
+            "profile": ["http://hl7.org/fhir/StructureDefinition/patient-livingDependency"]
+          }
+        ]
+      }
+    ]
+  }
+}

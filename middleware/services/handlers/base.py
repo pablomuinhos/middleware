@@ -8,7 +8,9 @@ from utils.logging_config import logger
 
 class HL7MessageHandler(ABC):
     """Clase base para todos los handlers de mensajes HL7"""
-    
+
+    PATIENT_PROFILE_URL = "http://middleware.fhir/profile/patient"
+
     @abstractmethod
     def can_handle(self, message_type: str) -> bool:
         """Verifica si este handler puede procesar el tipo de mensaje"""
@@ -192,6 +194,18 @@ class HL7MessageHandler(ABC):
         if not patient_data.get("identifier"):
             return False, None, None, "No se encontró identificador para el paciente"
 
+        # patient
+        fhir_patient = build_patient_resource(patient_data)
+        # Validar paciente contra perfil
+        is_valid, error_msg = await self.validate_resource(
+            fhir_patient, 
+            "Patient", 
+            self.PATIENT_PROFILE_URL
+        )
+        if not is_valid:
+            self.log_error(f"Validación de Patient fallida: {error_msg}")
+            return {"success": False, "error": f"Validación fallida: {error_msg}"}
+
         primary_id = patient_data["identifier"][0]
         system = primary_id["system"]
         value = primary_id["value"]
@@ -202,8 +216,6 @@ class HL7MessageHandler(ABC):
             "entry": []
         }
 
-        # patient
-        fhir_patient = build_patient_resource(patient_data)
         bundle["entry"].append({
             "fullUrl": "urn:uuid:patient-1",
             "resource": fhir_patient,
@@ -275,3 +287,70 @@ class HL7MessageHandler(ABC):
     def get_optional_segment(self, segments: Dict, segment_type: str, handler_name: str) -> Optional[Any]:
         """Obtiene un segmento opcional (cero o uno)"""
         return segments.get(segment_type)[0] if segment_type in segments  else None
+    
+
+
+    async def validate_resource(
+        self, 
+        resource: Dict[str, Any], 
+        resource_type: str, 
+        profile_url: str
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Valida un recurso FHIR contra un perfil usando la operación $validate.
+        
+        Args:
+            resource: Recurso FHIR a validar
+            resource_type: Tipo de recurso ("Patient", "Encounter", etc.)
+            profile_url: URL del perfil contra el que validar
+        
+        Returns:
+            Tuple (is_valid, error_message)
+        """
+
+        
+        # Añadir perfil si se proporciona
+        if profile_url:
+            if "meta" not in resource:
+                resource["meta"] = {}
+            if "profile" not in resource["meta"]:
+                resource["meta"]["profile"] = []
+            if profile_url not in resource["meta"]["profile"]:
+                resource["meta"]["profile"].append(profile_url)
+        params = {"profile": profile_url}
+        
+        self.log_info(f"Validando {resource_type} contra perfil {profile_url}")
+        
+        try:
+            status_code, result = await self.execute_fhir_operation(
+                "POST", 
+                f"/{resource_type}/$validate",
+                resource=resource,
+                params=params
+            )
+            
+            if status_code != 200:
+                return False, f"Error en validación: HTTP {status_code}"
+            
+            # verificar si hay errores en OperationOutcome
+            error_messages = []
+            for issue in result.get("issue", []):
+                if issue.get("severity") == "error":
+                    diagnostics = issue.get("diagnostics", "")
+                    error_code = issue.get("code", "unknown")
+
+                    if diagnostics:
+                        error_messages.append(f"{error_code}: {diagnostics}")
+                    else:
+                        error_messages.append(f"{error_code}")
+            
+            if error_messages:
+                return False, f"Validación fallida ({len(error_messages)} errores): " + "; ".join(error_messages)
+            
+            
+            self.log_info(f"Validación exitosa para {resource_type}")
+            return True, None
+            
+        except Exception as e:
+            self.log_error(f"Excepción en validación: {str(e)}")
+            return False, f"Error en validación: {str(e)}"

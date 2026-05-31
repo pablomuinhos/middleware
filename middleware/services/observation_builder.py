@@ -1,11 +1,12 @@
-# services/observation_builder.py
-
 from typing import Dict, Any, Optional
+from utils.date_utils import hl7_to_fhir_datetime
+
 
 def build_observation_resource(
     obs_data: Dict[str, Any],
     patient_fhir_id: str,
-    encounter_id: Optional[str] = None
+    encounter_id: Optional[str] = None,
+    service_request_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Construye un recurso FHIR Observation a partir de datos extraídos.
@@ -24,21 +25,17 @@ def build_observation_resource(
         }
     }
     
+    # Añadir basedOn si tenemos ServiceRequest
+    if service_request_id:
+        resource["basedOn"] = [{"reference": f"ServiceRequest/{service_request_id}"}]
+    
     # añadir Encounter si existe
     if encounter_id:
         resource["encounter"] = {"reference": f"Encounter/{encounter_id}"}
     
     # Añadir fecha/hora
     if obs_data.get("effective_date"):
-        # Convertir HL7 YYYYMMDDHHMMSS a ISO
-        date_raw = obs_data["effective_date"]
-        if len(date_raw) >= 14:
-            iso_date = f"{date_raw[0:4]}-{date_raw[4:6]}-{date_raw[6:8]}T{date_raw[8:10]}:{date_raw[10:12]}:{date_raw[12:14]}"
-        elif len(date_raw) >= 8:
-            iso_date = f"{date_raw[0:4]}-{date_raw[4:6]}-{date_raw[6:8]}"
-        else:
-            iso_date = date_raw
-        resource["effectiveDateTime"] = iso_date
+        resource["effectiveDateTime"] = hl7_to_fhir_datetime(obs_data["effective_date"])
     
     # Añadir valor y unidades
     if obs_data.get("value"):

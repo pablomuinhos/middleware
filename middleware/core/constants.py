@@ -1,11 +1,11 @@
 # TIPOS DE IDENTIFICADORES HL7 v2 -> FHIR system
 HL7_IDENTIFIER_TYPE_MAP = {
     "CIP": "urn:oid:2.16.724.1.2.2.1.1.1",       # CIP España
-    "MR": "urn:oid:hospital/medical-record",     # historia clínica local
-    "SS": "http://hl7.org/fhir/sid/us-ssn",      # SS
-    "NI": "urn:oid:es:nie",                      # NIE
-    "PN": "urn:oid:hospital/person-number",      # interno
-    "UNK": "urn:oid:hospital/unknown",           # Desconocido
+    "MR": "https://hospital.example/fhir/sid/mr",       # Historia clínica local
+    "SS": "http://hl7.org/fhir/sid/us-ssn",             # SS
+    "NI": "https://hospital.example/fhir/sid/nie",      # NIE
+    "PN": "https://hospital.example/fhir/sid/pn",       # Interno
+    "UNK": "https://hospital.example/fhir/sid/unknown", # Desconocido
 }
 
 # TIPOS DE MENSAJE HL7
@@ -32,12 +32,11 @@ class MessageType:
     ADT_A08 = "ADT^A08"
     ORU_R01 = "ORU^R01"
 #   RDE_O11 = "RDE^O11"
-#   ORM_O01 = "ORM^O01"
+    ORM_O01 = "ORM^O01"
 
 MULTI_RESOURCE_MESSAGES = {
     MessageType.ORU_R01,      # múltiples observations para múltiples pacientes
-    # MessageType.RDE_O11,
-    # MessageType.ORM_O01,
+    # MessageType.RDE_O11
 }
 def is_multi_resource_message(message_type: str) -> bool:
     return message_type in MULTI_RESOURCE_MESSAGES

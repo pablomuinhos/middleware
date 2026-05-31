@@ -13,7 +13,7 @@ class ADT_A08_Handler(HL7MessageHandler):
     def can_handle(self, message_type: str) -> bool:
         return message_type == self.MESSAGE_TYPE
     
-    async def process(self, segments: Dict[str, Any]) -> Dict[str, Any]:
+    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Dict[str, Any]:
         self.log_info(f"Procesando {self.MESSAGE_TYPE}: actualizar paciente")
         
         # paciente
@@ -43,6 +43,17 @@ class ADT_A08_Handler(HL7MessageHandler):
         self.log_info(f"Paciente encontrado: ID={patient_fhir_id}, versión={version_id}")
         
         fhir_resource = build_patient_resource(patient_data, patient_fhir_id=patient_fhir_id)
+
+        # Validar paciente contra perfil
+        is_valid, error_msg = await self.validate_resource(
+            fhir_resource, 
+            "Patient", 
+            self.PATIENT_PROFILE_URL
+        )
+        if not is_valid:
+            self.log_error(f"Validación de Patient fallida: {error_msg}")
+            return {"success": False, "error": f"Validación fallida: {error_msg}"}
+
 
         headers = {"If-Match": f'W/"{version_id}"'}
 

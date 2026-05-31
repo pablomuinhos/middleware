@@ -13,6 +13,14 @@ def build_patient_resource(patient_data: Dict[str, Any], patient_fhir_id: Option
         "resourceType": "Patient",
         "name": [{"family": patient_data["apellido"], "given": [patient_data["nombre"]]}]
     }
+ 
+    # Añadir segundo apellido como extensión (si existe)
+    apellido2 = patient_data.get("apellido2")
+    if apellido2:
+        fhir_resource.setdefault("extension", []).append({
+            "url": "http://hl7.org/fhir/StructureDefinition/patient-motherMaidenName",
+            "valueString": apellido2
+        })
     
     # añadir ID para actualización
     if patient_fhir_id:

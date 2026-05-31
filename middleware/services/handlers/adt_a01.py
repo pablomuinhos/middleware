@@ -13,7 +13,7 @@ class ADT_A01_Handler(HL7MessageHandler):
     def can_handle(self, message_type: str) -> bool:
         return message_type == self.MESSAGE_TYPE
 
-    async def process(self, segments: Dict[str, Any]) -> Dict[str, Any]:
+    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Dict[str, Any]:
         self.log_info(f"Procesando {self.MESSAGE_TYPE}")
 
         # paciente

@@ -14,7 +14,7 @@ class ADT_A04_Handler(HL7MessageHandler):
     def can_handle(self, message_type: str) -> bool:
         return message_type == self.MESSAGE_TYPE
     
-    async def process(self, segments: Dict[str, Any]) -> Dict[str, Any]:
+    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Dict[str, Any]:
         self.log_info(f"Procesando {self.MESSAGE_TYPE}: crear paciente")
         
         # paciente
@@ -23,6 +23,16 @@ class ADT_A04_Handler(HL7MessageHandler):
 
         patient_data = extract_patient_data(pid,pd1)
         fhir_resource = build_patient_resource(patient_data)
+
+        # Validar paciente contra perfil
+        is_valid, error_msg = await self.validate_resource(
+            fhir_resource, 
+            "Patient", 
+            self.PATIENT_PROFILE_URL
+        )
+        if not is_valid:
+            self.log_error(f"Validación de Patient fallida: {error_msg}")
+            return {"success": False, "error": f"Validación fallida: {error_msg}"}
 
         if_none_exist = f"identifier={patient_data['identifier'][0]['system']}|{patient_data['identifier'][0]['value']}"
         headers = { "If-None-Exist": if_none_exist }
@@ -88,32 +98,3 @@ class ADT_A04_Handler(HL7MessageHandler):
             "encounter": encounter_result,
             "warning": "Encounter no creado" if encounter_result and not encounter_result.get("success") else None
         }
-        """
-        if status_code == 201:
-            self.log_info(f"Paciente CREADO con ID: {result.get('id')}")
-            return {
-                "operation": "CREATE",
-                "success": True,
-                "patient_id": result.get("id"),
-                "created": True
-            }
-        
-        elif status_code == 200:
-            self.log_info(f"Paciente YA EXISTÍA con ID: {result.get('id')}")
-            return {
-                "operation": "CREATE",
-                "success": True,
-                "patient_id": result.get("id"),
-                "created": False,
-                "warning": "El paciente ya existía, se devolvió el existente"
-            }
-        
-        else:
-            self.log_error(f"Error inesperado creando paciente: {status_code} - {result}")
-            return {
-                "operation": "CREATE",
-                "success": False,
-                "error": result,
-                "status_code": status_code
-            }
-        """

@@ -3,7 +3,7 @@ from services.transformer import process_hl7_message
 from utils.logging_config import logger
 from models.hl7 import HL7TransformationResult
 from core.constants import is_multi_resource_message
-
+from datetime import datetime
 #router = APIRouter(prefix="/transform", tags=["Transformación HL7 v2 -> FHIR"])
 router = APIRouter(prefix="/hl7", tags=["Transformación HL7 v2 -> FHIR"])
 
