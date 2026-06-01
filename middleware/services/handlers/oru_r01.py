@@ -147,15 +147,23 @@ class ORU_R01_Handler(HL7MessageHandler):
                 if obs_data["placer_order_number"]:
                     service_request_id = await self._find_service_request(obs_data["placer_order_number"])
                 
+                unique_observation_id = obs_data["unique_observation_id"]
                 fhir_obs = build_observation_resource(
                     obs_data,
                     patient_fhir_id,
                     encounter_id,
-                    service_request_id
+                    service_request_id,
+                    unique_observation_id
                 )
                 
+                if unique_observation_id:
+                    if_none_exist = f"identifier=http://middleware.fhir/sid/observation-unique|{unique_observation_id}"
+                    headers = {"If-None-Exist": if_none_exist}
+                else:
+                    headers = {}
+                
                 status_code, result = await self.execute_fhir_operation(
-                    "POST", "/Observation", resource=fhir_obs
+                    "POST", "/Observation", resource=fhir_obs, headers=headers
                 )
                 
                 if status_code in [200, 201]:

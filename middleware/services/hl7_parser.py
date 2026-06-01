@@ -330,7 +330,7 @@ def extract_observation_data(obr_segment, obx_segments: list) -> List[Dict[str, 
     """
     observations = []
     
-    # OBR-4: orden
+    # OBR-2: orden
     placer_order_number = str(obr_segment[2]) if len(obr_segment) > 2 else ""
 
     # OBR-4: código
@@ -344,7 +344,9 @@ def extract_observation_data(obr_segment, obx_segments: list) -> List[Dict[str, 
     if len(obr_segment) > 7 and obr_segment[7]:
         effective_date = str(obr_segment[7])
     
-    for obx in obx_segments:
+    for idx, obx in enumerate(obx_segments):
+        set_id = str(obx[1]) if len(obx) > 1 and len(obx[1]) > 1 else str(idx + 1)
+        unique_observation_id = f"{placer_order_number}-{set_id}"
         # OBX-3: código 
         code = ""
         if len(obx) > 3 and obx[3]:
@@ -373,6 +375,7 @@ def extract_observation_data(obr_segment, obx_segments: list) -> List[Dict[str, 
             abnormal_flag = str(obx[8])
         
         observations.append({
+            "unique_observation_id":unique_observation_id,
             "placer_order_number": placer_order_number,
             "study_code": study_code,
             "code": code,

@@ -6,7 +6,8 @@ def build_observation_resource(
     obs_data: Dict[str, Any],
     patient_fhir_id: str,
     encounter_id: Optional[str] = None,
-    service_request_id: Optional[str] = None
+    service_request_id: Optional[str] = None,
+    unique_observation_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Construye un recurso FHIR Observation a partir de datos extraídos.
@@ -24,7 +25,11 @@ def build_observation_resource(
             "reference": f"Patient/{patient_fhir_id}"
         }
     }
-    
+    if unique_observation_id:
+        resource["identifier"] = [{
+            "system": "http://middleware.fhir/sid/observation-unique",
+            "value": unique_observation_id
+    }]
     # Añadir basedOn si tenemos ServiceRequest
     if service_request_id:
         resource["basedOn"] = [{"reference": f"ServiceRequest/{service_request_id}"}]
