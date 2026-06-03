@@ -6,7 +6,7 @@
   "title": "Perfil de Paciente para Middleware FHIR",
   "status": "active",
   "description": "Perfil que define los campos principales utilizados por el middleware en el recurso Patient",
-  "fhirVersion": "5.0.0",
+  "fhirVersion": "4.0.0",
   "kind": "resource",
   "abstract": false,
   "type": "Patient",
