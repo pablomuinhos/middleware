@@ -1,7 +1,7 @@
 from services.handlers.base import HL7MessageHandler
 from services.hl7_parser import extract_patient_data, extract_service_request_data
 from services.service_request_builder import build_service_request_resource
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 class ORM_O01_Handler(HL7MessageHandler):
     """
@@ -14,8 +14,10 @@ class ORM_O01_Handler(HL7MessageHandler):
     def can_handle(self, message_type: str) -> bool:
         return message_type == self.MESSAGE_TYPE
 
-    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Tuple[Dict[str, Any], Dict[str, int], List[str]]:
         self.log_info(f"Procesando {self.MESSAGE_TYPE}: solicitud de pruebas")
+        resources_processed = {}
+        errors = []
 
         pid = self.get_required_segment(segments, "PID", self.MESSAGE_TYPE) # lo tratamos como requerido
 
@@ -28,13 +30,13 @@ class ORM_O01_Handler(HL7MessageHandler):
         )
 
         if not patient_resource:
-            return {"success": False, "error": "Paciente no encontrado"}
+            return {"success": False},resources_processed,["Paciente no encontrado"]
 
         patient_fhir_id = patient_resource.get("id")
 
         service_requests_pairs = self._extract_service_request_estructure(segments, indexes)
         if len(service_requests_pairs) == 0:
-            return {"success": False, "error": "No se encontraron ordenes"}
+            return {"success": False}, resources_processed, ["No se encontraron órdenes"]
 
         # Buscar o crear Encounter (si hay PV1)
         encounter_id = None
@@ -52,11 +54,12 @@ class ORM_O01_Handler(HL7MessageHandler):
             )
             if enc_status in [200, 201]:
                 encounter_id = enc_result.get("id")
+                resources_processed["Encounter"] = resources_processed.get("Encounter", 0) + 1
 
         # Procesar cada par ORC-OBR
         created_requests = []
         cancelled_requests = []
-        errors = []
+        errors_int = []
         for request_pair in service_requests_pairs:
             orc = request_pair.get("orc")
             obr = request_pair.get("obr")
@@ -89,6 +92,7 @@ class ORM_O01_Handler(HL7MessageHandler):
                 )
 
                 if status_code in [200, 201]:
+                    resources_processed["ServiceRequest"] = resources_processed.get("ServiceRequest", 0) + 1
                     sr_id = result.get("id")
                     self.log_info(f"ServiceRequest creado: ID={sr_id}")
                     created_requests.append({
@@ -97,19 +101,24 @@ class ORM_O01_Handler(HL7MessageHandler):
                         "study_code": request_data.get("study_code")
                     })
                 else:
-                    self.log_error(f"Error creando ServiceRequest: {status_code}")
-                    errors.append({
+                    self.log_error(f"Error creando ServiceRequest (order_id={order_id}): {status_code}")
+                    errors_int.append({
                         "order_id": request_data.get("order_id"),
                         "error": result,
                         "status_code": status_code
                     })
+                    error_msg = f"Error creando ServiceRequest (order_id={order_id})"
+                    errors.append(error_msg)
+
             elif order_control == "CA":  # Cancelar orden
                 # Obtener el número de orden (OBR-2)
                 order_id = str(obr[2]) if len(obr) > 2 else ""
                 
                 if not order_id:
-                    self.log_error("Cancelación sin número de orden (OBR-2)")
-                    errors.append({"error": "Cancelación sin número de orden"})
+                    error_msg = "Cancelación sin número de orden (OBR-2)"
+                    self.log_error(error_msg)
+                    errors_int.append({"error": error_msg})
+                    errors.append(error_msg)
                     continue
                 
                 # Buscar ServiceRequest por identifier
@@ -119,22 +128,32 @@ class ORM_O01_Handler(HL7MessageHandler):
                     # Actualizar status a "revoked"
                     update_result = await self._cancel_service_request(service_request_id)
                     if update_result:
+                        resources_processed["ServiceRequest"] = resources_processed.get("ServiceRequest", 0) + 1
                         cancelled_requests.append({
                             "service_request_id": service_request_id,
                             "order_id": order_id,
                             "action": "cancelled"
                         })
                     else:
-                        errors.append({
+                        error_msg = f"No se pudo cancelar la orden {order_id}"
+                        self.log_error(error_msg)
+                        errors.append(error_msg)
+                        errors_int.append({
                             "order_id": order_id,
                             "error": "No se pudo cancelar la orden"
                         })
                 else:
-                    errors.append({
+                    error_msg = f"Orden no encontrada para cancelar: {order_id}"
+                    self.log_error(error_msg)
+                    errors.append(error_msg)
+                    errors_int.append({
                         "order_id": order_id,
                         "error": "Orden no encontrada"
                     })
-
+            else:
+                error_msg = f"Tipo de orden no soportado: {order_control}"
+                self.log_warning(error_msg)
+                errors.append(error_msg)
 
 
         # Respuesta final
@@ -145,8 +164,8 @@ class ORM_O01_Handler(HL7MessageHandler):
             "service_requests_created": len(created_requests),
             "service_requests": created_requests,
             "cancelled_requests": cancelled_requests,
-            "errors": errors if errors else None
-        }
+            "errors": errors_int if errors_int else None
+        }, resources_processed, errors
         
     def _extract_service_request_estructure(self, segments: Dict, indexes: Dict) -> List[Dict]:
         """

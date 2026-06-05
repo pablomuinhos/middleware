@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional
 from services.hl7_parser import extract_encounter_data
 from services.patient_builder import build_patient_resource
 from services.encounter_builder import  build_encounter_resource
@@ -17,8 +17,14 @@ class HL7MessageHandler(ABC):
         pass
     
     @abstractmethod
-    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Procesa el mensaje y devuelve el resultado de la operación FHIR"""
+    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Tuple[Dict[str, Any],Dict[str, int], List[Dict]]:
+        """
+        Procesa el mensaje y devuelve el resultado de la operación FHIR
+            Tuple (result, resources_processed, errors)
+            - result: diccionario con detalles adicionales
+            - resources_processed: {"ResurceType1": num, ResurceType2": num, ...}
+            - errors: lista de errores
+        """
         pass
     
     async def execute_fhir_operation(

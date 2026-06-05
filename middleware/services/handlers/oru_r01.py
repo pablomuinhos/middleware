@@ -1,5 +1,3 @@
-# services/handlers/oru_r01.py
-
 from services.handlers.base import HL7MessageHandler
 from services.hl7_parser import extract_patient_data, extract_observation_data
 from services.observation_builder import build_observation_resource
@@ -12,32 +10,34 @@ class ORU_R01_Handler(HL7MessageHandler):
     def can_handle(self, message_type: str) -> bool:
         return message_type == self.MESSAGE_TYPE
     
-    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Tuple[Dict[str, Any], Dict[str, int], List[str]]:
         self.log_info(f"Procesando {self.MESSAGE_TYPE}: resultados de laboratorio")
+        resources_processed = {}
+        errors = []
         
         # EXTRAER ESTRUCTURA ANIDADA: Pacientes -> Órdenes -> Resultados
         patients_structure = self._extract_patient_orders_structure(segments, indexes)
         if not patients_structure:
-            return {"success": False, "error": "No se encontraron datos de pacientes"}
+            return {"success": False}, resources_processed, ["No se encontraron datos de pacientes"]
         
         # procesar pacientes -> Órdenes -> Resultados
         results = []
-        errors = []
+        errors_int = []
         
         for patient_data in patients_structure:
-            result = await self._process_patient(patient_data)
+            result = await self._process_patient(patient_data, resources_processed, errors)
             if result.get("success"):
                 results.append(result)
             else:
-                errors.append(result)
+                errors_int.append(result)
         
         return {
             "success": len(errors) == 0,
             "patients_processed": len(results),
-            "patients_with_errors": len(errors),
+            "patients_with_errors": len(errors_int),
             "results": results,
-            "errors": errors if errors else None
-        }
+            "errors": errors_int if errors_int else None
+        }, resources_processed, errors
     
     def _extract_patient_orders_structure(self, segments: Dict, indexes: Dict) -> List[Dict]:
         """
@@ -96,7 +96,7 @@ class ORU_R01_Handler(HL7MessageHandler):
         
         return patients
     
-    async def _process_patient(self, patient_struct: Dict) -> Dict[str, Any]:
+    async def _process_patient(self, patient_struct: Dict, resources_processed: Dict, errors: List) -> Dict[str, Any]:
         """Procesa un paciente completo (PID, PV1, y todas sus órdenes)"""
         
         pid = patient_struct.get("pid")
@@ -104,15 +104,18 @@ class ORU_R01_Handler(HL7MessageHandler):
         orders = patient_struct.get("orders", [])
         
         if not pid:
+            errors.append("Paciente sin segmento PID")
             return {"success": False, "error": "Paciente sin segmento PID"}
         
         # Extraer datos del paciente
         try:
             patient_data = extract_patient_data(pid, None)
         except ValueError as e:
+            errors.append(str(e))
             return {"success": False, "error": str(e)}
         
         if not patient_data.get("identifier"):
+            errors.append("No se encontró identificador del paciente")
             return {"success": False, "error": "No se encontró identificador del paciente"}
 
         # buscar paciente para obtener id
@@ -122,13 +125,20 @@ class ORU_R01_Handler(HL7MessageHandler):
         )
         
         if not patient_resource:
+            errors.append(f"Paciente no encontrado: {patient_data['identifier'][0]['value']}")
             return {"success": False, "error": f"Paciente no encontrado: {patient_data['identifier'][0]['value']}"}
         
         patient_fhir_id = patient_resource.get("id")
         
         # Buscar o crear Encounter
-        encounter_id = await self._get_encounter_id(patient_fhir_id, pv1)
+        encounter_id, created, encounter_error  = await self._get_encounter_id(patient_fhir_id, pv1)
         
+        if encounter_error:
+            errors.append(encounter_error)
+        elif encounter_id:
+            if created:
+                resources_processed["Encounter"] = resources_processed.get("Encounter", 0) + 1
+
         # Procesar todas las órdenes del paciente
         all_observations = []
         order_errors = []
@@ -146,6 +156,8 @@ class ORU_R01_Handler(HL7MessageHandler):
                 service_request_id = None
                 if obs_data["placer_order_number"]:
                     service_request_id = await self._find_service_request(obs_data["placer_order_number"])
+                    if not service_request_id and obs_data.get("placer_order_number"):
+                        errors.append(f"ServiceRequest no encontrado para orden {obs_data['placer_order_number']}")
                 
                 unique_observation_id = obs_data["unique_observation_id"]
                 fhir_obs = build_observation_resource(
@@ -167,6 +179,7 @@ class ORU_R01_Handler(HL7MessageHandler):
                 )
                 
                 if status_code in [200, 201]:
+                    resources_processed["Observation"] = resources_processed.get("Observation", 0) + 1
                     obs_id = result.get("id")
                     self.log_info(f"Observation creada: {obs_id}")
                     all_observations.append({
@@ -174,7 +187,10 @@ class ORU_R01_Handler(HL7MessageHandler):
                         "code": obs_data.get("code"),
                         "value": obs_data.get("value")
                     })
+                    self.log_info(f"Observation creada: {result.get('id')}")
                 else:
+                    self.log_error(f"Error creando Observation (orden={obs_data.get('placer_order_number')}, code={obs_data.get('code')}): {status_code}")
+                    errors.append(f"Error creando Observation (orden={obs_data.get('placer_order_number')}, code={obs_data.get('code')})")
                     order_errors.append({
                         "order_idx": order_idx,
                         "code": obs_data.get("code"),
@@ -191,7 +207,7 @@ class ORU_R01_Handler(HL7MessageHandler):
             "errors": order_errors if order_errors else None
         }
     
-    async def _get_encounter_id(self, patient_fhir_id: str, pv1_segment: Optional[Any] = None) -> Optional[str]:
+    async def _get_encounter_id(self, patient_fhir_id: str, pv1_segment: Optional[Any] = None) -> Tuple[Optional[str], bool]:
         """Obtiene el ID del Encounter: busca activo o crea uno nuevo desde PV1"""
         
         # 1. Buscar Encounter activo
@@ -206,7 +222,7 @@ class ORU_R01_Handler(HL7MessageHandler):
             encounter = result["entry"][0]["resource"]
             encounter_id = encounter.get("id")
             self.log_info(f"Encounter activo encontrado: {encounter_id}")
-            return encounter_id
+            return encounter_id, False, None
         
         # 2. Si no hay Encounter activo y tenemos PV1, crear uno nuevo
         if pv1_segment:
@@ -223,10 +239,13 @@ class ORU_R01_Handler(HL7MessageHandler):
             if status_code in [200, 201]:
                 encounter_id = result.get("id")
                 self.log_info(f"Encounter creado desde PV1: {encounter_id}")
-                return encounter_id
+                return encounter_id, True, None
+            else:
+                self.log_error(f"Error creando Encounter: {status_code}")
+                return None, False, "Error creando Encounter"
         
         self.log_info(f"No se encontró ni creó Encounter para paciente {patient_fhir_id}")
-        return None
+        return None, False, "No se encontró ni creó Encounter para paciente {patient_fhir_id}"
     
     async def _find_service_request(self, placer_order_number: str) -> Optional[str]:
         """Busca un ServiceRequest por su número de orden (identificador de negocio)"""

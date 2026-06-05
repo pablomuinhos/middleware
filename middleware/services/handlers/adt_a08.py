@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
 from services.handlers.base import HL7MessageHandler
 from services.hl7_parser import extract_patient_data
 from services.patient_builder import build_patient_resource
@@ -13,9 +13,11 @@ class ADT_A08_Handler(HL7MessageHandler):
     def can_handle(self, message_type: str) -> bool:
         return message_type == self.MESSAGE_TYPE
     
-    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Tuple[Dict[str, Any], Dict[str, int], List[str]]:
         self.log_info(f"Procesando {self.MESSAGE_TYPE}: actualizar paciente")
-        
+        resources_processed = {}
+        errors = []
+
         # paciente
         pid = self.get_required_segment(segments, "PID", self.MESSAGE_TYPE)
         pd1 = self.get_optional_segment(segments, "PD1", self.MESSAGE_TYPE)
@@ -35,7 +37,7 @@ class ADT_A08_Handler(HL7MessageHandler):
                 "success": False,
                 "error": error_msg,
                 "status_code": status_code
-            }
+            }, resources_processed, [error_msg]
         
         patient_fhir_id = patient_resource.get("id")
         version_id = patient_resource.get("meta", {}).get("versionId", "1")
@@ -51,9 +53,9 @@ class ADT_A08_Handler(HL7MessageHandler):
             self.PATIENT_PROFILE_URL
         )
         if not is_valid:
-            self.log_error(f"Validación de Patient fallida: {error_msg}")
-            return {"success": False, "error": f"Validación fallida: {error_msg}"}
-
+            error = f"Validación de Patient fallida: {error_msg}"
+            self.log_error(error)
+            return {"success": False}, resources_processed, [error]
 
         headers = {"If-Match": f'W/"{version_id}"'}
 
@@ -67,27 +69,26 @@ class ADT_A08_Handler(HL7MessageHandler):
 
         if update_status == 200:
             self.log_info(f"Paciente actualizado: {patient_fhir_id}")
+            resources_processed["Patient"] = resources_processed.get("Patient", 0) + 1
             return {
                 "operation": "UPDATE",
                 "success": True,
                 "patient_id": patient_fhir_id,
                 "updated": True
-            }
+            }, resources_processed, errors
         elif update_status == 404:
             return {
                 "operation": "UPDATE",
                 "success": False,
-                "error": "Paciente no encontrado durante actualización",
                 "status_code": 404
-            }
+            }, resources_processed, ["Paciente no encontrado durante actualización"]
         elif update_status == 412:
             self.log_error(f"Conflicto de versión para {patient_fhir_id}")
             return {
                 "operation": "UPDATE",
                 "success": False,
-                "error": "El paciente fue modificado por otro proceso (conflicto de versión)",
                 "status_code": 412
-            }
+            }, resources_processed, ["El paciente fue modificado por otro proceso (conflicto de versión)"]
         else:
             self.log_error(f"Error actualizando: {update_status}")
             return {
@@ -95,4 +96,4 @@ class ADT_A08_Handler(HL7MessageHandler):
                 "success": False,
                 "error": update_result,
                 "status_code": update_status
-            }
+            }, resources_processed, [update_result]

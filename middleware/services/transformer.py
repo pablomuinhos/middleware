@@ -1,11 +1,15 @@
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional
 from services.hl7_parser import parse_hl7_segments, check_token_and_date_and_get_message_type
 from services.handlers import get_handler
 from utils.logging_config import logger
 
-async def process_hl7_message(raw_message: str) -> Tuple[Dict[str, Any], str, Optional[str]]:
+async def process_hl7_message(raw_message: str) -> Tuple[Dict[str, Any], str, Dict[str, int], List[str]]:
     """
     Procesa un mensaje HL7 v2 y devuelve un recurso FHIR.
+    - result: resultado del handler (puede contener detalles adicionales)
+    - message_type: tipo de mensaje detectado
+    - resources_processed: diccionario con contadores de recursos creados
+    - errors: lista de errores ocurridos
     """
     segments, indexes = parse_hl7_segments(raw_message)
 
@@ -16,11 +20,11 @@ async def process_hl7_message(raw_message: str) -> Tuple[Dict[str, Any], str, Op
     handler = get_handler(message_type)
     if not handler:
         logger.warning(f"Tipo de mensaje no soportado: {message_type}")
-        return {
-            "operation": "UNSUPPORTED",
-            "success": False,
-            "error": f"Tipo de mensaje '{message_type}' no soportado"
-        }, message_type, None
+        return (
+            {"operation": "UNSUPPORTED","success": False}, 
+            message_type, 
+            {},
+            [f"Tipo de mensaje no soportado: {message_type}"])
     
-    result = await handler.process(segments, indexes)
-    return result, message_type, result.get("patient_id")
+    result, resources_processed, errors = await handler.process(segments, indexes)
+    return result, message_type, resources_processed, errors

@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
 from services.encounter_builder import build_encounter_resource
 from services.handlers.base import HL7MessageHandler
 from services.hl7_parser import extract_encounter_data, extract_patient_data
@@ -14,9 +14,11 @@ class ADT_A04_Handler(HL7MessageHandler):
     def can_handle(self, message_type: str) -> bool:
         return message_type == self.MESSAGE_TYPE
     
-    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def process(self, segments: Dict[str, Any], indexes: Dict[str, Any] = None) -> Tuple[Dict[str, Any], Dict[str, int], List[str]]:
         self.log_info(f"Procesando {self.MESSAGE_TYPE}: crear paciente")
-        
+        resources_processed = {}
+        errors = []
+
         # paciente
         pid = self.get_required_segment(segments, "PID", self.MESSAGE_TYPE)
         pd1 = self.get_optional_segment(segments, "PD1", self.MESSAGE_TYPE)
@@ -31,8 +33,9 @@ class ADT_A04_Handler(HL7MessageHandler):
             self.PATIENT_PROFILE_URL
         )
         if not is_valid:
-            self.log_error(f"Validación de Patient fallida: {error_msg}")
-            return {"success": False, "error": f"Validación fallida: {error_msg}"}
+            error = f"Validación de Patient fallida: {error_msg}"
+            self.log_error(error)
+            return {"success": False, "error": f"Validación fallida: {error_msg}"}, resources_processed, [error]
 
         if_none_exist = f"identifier={patient_data['identifier'][0]['system']}|{patient_data['identifier'][0]['value']}"
         headers = { "If-None-Exist": if_none_exist }
@@ -46,21 +49,22 @@ class ADT_A04_Handler(HL7MessageHandler):
         )
 
         if patient_status not in [200, 201]:
-            self.log_error(f"Error creando/actualizando Patient: {patient_status}")
+            error = f"Error creando/actualizando Patient: {patient_status}"
+            self.log_error(error)
             return {
                 "success": False,
                 "error": patient_result,
                 "status_code": patient_status
-            }
+            }, resources_processed, [error]
         
         patient_fhir_id = patient_result.get("id")
         self.log_info(f"Patient creado: ID={patient_fhir_id}")
 
-        # encounter
-        encounter_result = None
-        pv1 = self.get_required_segment(segments, "PV1", self.MESSAGE_TYPE)
-            
+        encounter_id = None
         try:
+             # encounter
+            encounter_result = None
+            pv1 = self.get_required_segment(segments, "PV1", self.MESSAGE_TYPE)
             encounter_data = extract_encounter_data(pv1)
             fhir_encounter = build_encounter_resource(encounter_data, patient_fhir_id)
 
@@ -78,23 +82,32 @@ class ADT_A04_Handler(HL7MessageHandler):
                     "status_code": enc_status
                 }
             else:
-                self.log_error(f"Error creando Encounter: {enc_status} - {enc_result}")
+                error = f"Error creando Encounter: {enc_status} - {enc_result}"
+                self.log_error(error)
+                errors.append(error)
                 encounter_result = {
                     "success": False,
                     "error": enc_result,
                     "status_code": enc_status
                 }
         except Exception as e:
-            self.log_error(f"Excepción creando Encounter: {str(e)}")
+            error = f"Excepción creando Encounter: {str(e)}"
+            self.log_error(error)
+            errors.append(error)
             encounter_result = {
                 "success": False,
                 "error": str(e),
                 "status_code": None
             }
             
+        if patient_fhir_id:
+            resources_processed["Patient"] = resources_processed.get("Patient", 0) + 1
+        if encounter_id:
+            resources_processed["Encounter"] = resources_processed.get("Encounter",  0) + 1
+                                                                       
         return {
             "success": True,
             "patient_id": patient_fhir_id,
             "encounter": encounter_result,
             "warning": "Encounter no creado" if encounter_result and not encounter_result.get("success") else None
-        }
+        }, resources_processed, errors

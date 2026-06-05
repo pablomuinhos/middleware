@@ -1,5 +1,7 @@
 from typing import Dict, Any, Optional
 
+from utils.date_utils import hl7_to_fhir_datetime
+
 def build_encounter_resource(encounter_data: Dict[str, Any], patient_fhir_id: str, patient_identifier: Dict = None) -> Dict[str, Any]:
     """
     Construye un recurso FHIR Encounter.
@@ -40,15 +42,9 @@ def build_encounter_resource(encounter_data: Dict[str, Any], patient_fhir_id: st
 
     # admit_time
     if encounter_data.get("admit_time"):
-        # TODO revisar formatos para pasar a ISO
         admit_str = str(encounter_data["admit_time"])
-        if len(admit_str) >= 14:
-            iso_date = f"{admit_str[0:4]}-{admit_str[4:6]}-{admit_str[6:8]}T{admit_str[8:10]}:{admit_str[10:12]}:{admit_str[12:14]}"
-        elif len(admit_str) == 8:  # solo fecha
-            iso_date = f"{admit_str[0:4]}-{admit_str[4:6]}-{admit_str[6:8]}"
-        else:
-            iso_date = admit_str
-            
+        iso_date = hl7_to_fhir_datetime(admit_str)
+   
         resource["period"] = {"start": iso_date}
 
     return resource

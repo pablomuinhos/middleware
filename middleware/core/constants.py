@@ -25,18 +25,3 @@ PRIMARY_IDENTIFIER_TYPES = ["CIP", "MR", "SS", "NI", DEFAULT_IDENTIFIER]
 
 # OUTROS
 FHIR_RESOURCE_TYPES = ["Patient", "Encounter", "Observation", "MedicationRequest"]
-
-class MessageType:
-    ADT_A01 = "ADT^A01"
-    ADT_A04 = "ADT^A04"
-    ADT_A08 = "ADT^A08"
-    ORU_R01 = "ORU^R01"
-#   RDE_O11 = "RDE^O11"
-    ORM_O01 = "ORM^O01"
-
-MULTI_RESOURCE_MESSAGES = {
-    MessageType.ORU_R01,      # múltiples observations para múltiples pacientes
-    # MessageType.RDE_O11
-}
-def is_multi_resource_message(message_type: str) -> bool:
-    return message_type in MULTI_RESOURCE_MESSAGES
