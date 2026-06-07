@@ -59,22 +59,25 @@ def check_token_and_date_and_get_message_type(segments: Dict[str, Any]) -> str:
         raise ValueError("No se encontró fecha/hora en el mensaje (MSH-7)")
     
     try:
-        msg_time = datetime.strptime(msh_datetime, "%Y%m%d%H%M%S")
-    except ValueError:
-        try:
+        if len(msh_datetime) >= 14:
+            msg_time = datetime.strptime(msh_datetime, "%Y%m%d%H%M%S")
+        elif len(msh_datetime) >= 12:
+            msg_time = datetime.strptime(msh_datetime, "%Y%m%d%H%M")
+        elif len(msh_datetime) >= 8:
             msg_time = datetime.strptime(msh_datetime, "%Y%m%d")
-        except ValueError:
+        else:
             raise ValueError(f"Formato de fecha no reconocido: {msh_datetime}")
+    except ValueError:
+            raise ValueError(f"Formato de fecha no reconocido: {msh_datetime}")
+    
     msg_time = msg_time.replace(tzinfo=timezone.utc)    
     now = datetime.now(timezone.utc)
     time_diff = abs((now - msg_time).total_seconds())
     
     MAX_TIME_DIFF_SECONDS = settings.MAX_TIME_DIFF_SECONDS
     
-    #if time_diff > MAX_TIME_DIFF_SECONDS:
-    #    raise ValueError(f"El mensaje tiene una antigüedad de {time_diff/60:.1f} minutos, excede el límite de 30 minutos")
-    
-
+    if time_diff > MAX_TIME_DIFF_SECONDS:
+        raise ValueError(f"El mensaje tiene una antigüedad de {time_diff/60:.1f} minutos, excede el límite de 30 minutos")
     
     return str(msh[9])
 

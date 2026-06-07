@@ -210,7 +210,7 @@ class HL7MessageHandler(ABC):
         )
         if not is_valid:
             self.log_error(f"Validación de Patient fallida: {error_msg}")
-            return {"success": False, "error": f"Validación fallida: {error_msg}"}
+            return False, None, None, f"Validación fallida: {error_msg}"
 
         primary_id = patient_data["identifier"][0]
         system = primary_id["system"]

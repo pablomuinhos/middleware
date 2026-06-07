@@ -25,7 +25,7 @@ app.add_middleware(
 
 # routers
 app.include_router(health.router)
-app.include_router(patients.router)
+app.include_router(patients.router) # uso pruebas, borrable
 app.include_router(hl7_endpoint.router)
 
 # raíz

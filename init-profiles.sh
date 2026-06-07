@@ -38,6 +38,7 @@ for profile_file in "$PROFILES_DIR"/*.json; do
     HTTP_CODE=$(curl -s -o "$PROFILES_DIR"/tmp.log -w "%{http_code}" \
         -X POST "$FHIR_URL/StructureDefinition" \
         -H "Content-Type: application/fhir+json" \
+        -H "Cache-Control: no-cache" \
         -H "If-None-Exist: url=$PROFILE_URL" \
         -d @"$profile_file")
 
